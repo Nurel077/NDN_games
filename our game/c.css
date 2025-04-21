@@ -1,0 +1,732 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #1a1a2e, #16213e, #1a1a2e);
+  font-family: Arial, sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.geometric-shapes {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.shape {
+  position: absolute;
+  opacity: 0.15;
+  animation: float 20s infinite linear;
+}
+
+.shape:nth-child(1) {
+  width: 100px;
+  height: 100px;
+  background: #ff69b4;
+  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+  top: 15%;
+  left: 25%;
+  animation-delay: 0s;
+}
+
+.shape:nth-child(2) {
+  width: 80px;
+  height: 80px;
+  background: #ffa500;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  top: 65%;
+  left: 75%;
+  animation-delay: -5s;
+}
+
+.shape:nth-child(3) {
+  width: 120px;
+  height: 120px;
+  background: #9370db;
+  border-radius: 50%;
+  top: 75%;
+  left: 15%;
+  animation-delay: -10s;
+}
+
+.shape:nth-child(4) {
+  width: 90px;
+  height: 90px;
+  background: #32cd32;
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  top: 25%;
+  left: 85%;
+  animation-delay: -15s;
+}
+
+@keyframes float {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  33% {
+    transform: translate(30px, 30px) rotate(120deg);
+  }
+  66% {
+    transform: translate(-30px, 15px) rotate(240deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(360deg);
+  }
+}
+
+.game-container {
+  position: relative;
+  z-index: 1;
+  background: rgba(13, 17, 23, 0.85);
+  backdrop-filter: blur(10px);
+  padding: 20px;
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: grid;
+  grid-template-areas:
+    "title score"
+    "grid grid"
+    "blocks blocks";
+  gap: 20px;
+  justify-items: center;
+}
+
+.game-grid {
+  grid-area: grid;
+  display: grid;
+  grid-template-columns: repeat(8, 50px);
+  grid-template-rows: repeat(8, 50px);
+  gap: 4px;
+  background-color: rgba(30, 41, 59, 0.95);
+  padding: 10px;
+  border-radius: 8px;
+  justify-self: center;
+}
+
+.grid-cell {
+  width: 50px;
+  height: 50px;
+  background-color: rgba(51, 65, 85, 0.5);
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+  transition: background-color 0.2s;
+}
+
+.upcoming-blocks-container {
+  grid-area: blocks;
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  width: 100%;
+}
+
+.upcoming-block {
+  width: 120px;
+  height: 120px;
+  background: rgba(30, 41, 59, 0.95);
+  border-radius: 8px;
+  padding: 10px;
+  cursor: grab;
+  transition: transform 0.2s ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.upcoming-block:hover {
+  transform: translateY(-5px);
+}
+
+.upcoming-block.dragging {
+  opacity: 0.9;
+  transform: scale(1.05);
+  cursor: grabbing;
+}
+
+.upcoming-block-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+}
+
+/* Стили для блока 2x2 */
+.upcoming-block-grid:not(.horizontal-1x3):not(.vertical-1x3) {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+/* Стили для вертикального блока 1x3 */
+.upcoming-block-grid.vertical-1x3 {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(3, 1fr);
+  width: 40px;
+  height: 120px;
+}
+
+/* Стили для горизонтального блока 1x3 */
+.upcoming-block-grid.horizontal-1x3 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 1fr;
+  width: 120px;
+  height: 40px;
+}
+
+.upcoming-block-cell {
+  border-radius: 6px;
+  transition: transform 0.2s ease;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filled-cell {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  position: relative;
+  transition: transform 0.3s;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.grid-cell.valid-drop {
+  background-color: rgba(34, 197, 94, 0.2);
+}
+
+.grid-cell.invalid-drop {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
+.filled-cell.falling {
+  animation: fall 0.3s ease-in;
+}
+
+@keyframes fall {
+  from {
+    transform: translateY(calc(-1 * var(--fall-distance)));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+h1 {
+  grid-area: title;
+  color: white;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  margin: 0;
+  font-size: 2.5em;
+  background: linear-gradient(45deg, #ff0000, #ff8000, #ffff00, #00ff00, #00ffff, #0000ff, #8000ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rainbow 8s linear infinite;
+  justify-self: start;
+}
+
+.score-display {
+  grid-area: score;
+  font-size: 24px;
+  font-weight: bold;
+  color: #fff;
+  padding: 10px 20px;
+  background: rgba(30, 41, 59, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  justify-self: end;
+}
+
+@keyframes rainbow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 400% 50%; }
+}
+
+.particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: particle-animation 0.5s ease-out forwards;
+}
+
+@keyframes particle-animation {
+  0% {
+    transform: scale(0) translate(0, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translate(var(--x, 30px), var(--y, 30px));
+    opacity: 0;
+  }
+}
+
+.combo-text {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: #FFFFFF;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  padding: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  animation: comboAppear 0.5s cubic-bezier(0.2, 0.8, 0.2, 1.2);
+  pointer-events: none;
+}
+
+@keyframes comboAppear {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+.combo-text.fade-out {
+  animation: comboFadeOut 0.3s ease-out forwards;
+}
+
+@keyframes comboFadeOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -80%) scale(0.8);
+  }
+}
+
+.points-text {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #FFFFFF;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: pointsAppear 0.3s ease-out;
+}
+
+@keyframes pointsAppear {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -30%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+.points-text.fade-out {
+  animation: pointsFadeOut 0.3s ease-out forwards;
+}
+
+@keyframes pointsFadeOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -70%);
+  }
+}
+
+.game-over-message {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  animation: fade-in 0.5s ease-in-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.game-over-content {
+  background-color: white;
+  padding: 30px;
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  max-width: 80%;
+}
+
+.game-over-content h2 {
+  font-size: 2rem;
+  margin-bottom: 15px;
+  background-image: linear-gradient(90deg, #f87171, #fb923c, #facc15, #4ade80, #60a5fa, #c084fc);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.game-over-content p {
+  font-size: 1.2rem;
+  margin-bottom: 20px;
+}
+
+.restart-button {
+  background: linear-gradient(90deg, #60a5fa, #c084fc);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.restart-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.restart-button:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 700px) {
+  .game-over-content {
+    padding: 20px;
+  }
+}
+
+.combo-text::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 120%;
+  background: radial-gradient(circle, var(--combo-color) 0%, transparent 70%);
+  transform: translate(-50%, -50%);
+  opacity: 0.3;
+  z-index: -1;
+  animation: pulseGlow 0.5s ease-out;
+}
+
+@keyframes pulseGlow {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+/* Стили для разных уровней комбо */
+.combo-text[data-combo="2"] {
+  color: #FFF176;
+  font-size: 2.7rem;
+  filter: drop-shadow(0 0 25px #FFD700);
+}
+
+.combo-text[data-combo="3"] {
+  color: #FF9800;
+  font-size: 2.9rem;
+  filter: drop-shadow(0 0 30px #FF9800);
+}
+
+.combo-text[data-combo="4"] {
+  color: #FF5722;
+  font-size: 3.1rem;
+  filter: drop-shadow(0 0 35px #FF5722);
+}
+
+.combo-text[data-combo="5"] {
+  color: #E91E63;
+  font-size: 3.3rem;
+  filter: drop-shadow(0 0 40px #E91E63);
+}
+
+.combo-text[data-combo="6"] {
+  background: linear-gradient(to bottom, #FF0000, #FF9800, #FFEB3B);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 3.5rem;
+  filter: drop-shadow(0 0 45px #FF0000);
+}
+
+/* Эффект искр для высоких комбо */
+.combo-spark {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #FFF;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: sparkFly 0.6s linear forwards;
+}
+
+@keyframes sparkFly {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--spark-x, 50px), var(--spark-y, -50px)) scale(0);
+    opacity: 0;
+  }
+}
+
+/* Эффект волны для комбо */
+.combo-wave {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  border: 2px solid var(--combo-color);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: waveExpand 0.8s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes waveExpand {
+  0% {
+    width: 20px;
+    height: 20px;
+    opacity: 0.8;
+    border-width: 2px;
+  }
+  100% {
+    width: 200px;
+    height: 200px;
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+.mega-combo-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 3rem;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 
+    0 0 10px rgba(255, 0, 0, 0.5),
+    0 0 20px rgba(255, 165, 0, 0.5),
+    0 0 30px rgba(255, 255, 0, 0.5);
+  z-index: 1000;
+  background: linear-gradient(90deg, #ff0000, #ff8800, #ffff00, #00ff00, #0088ff, #8800ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  padding: 20px 40px;
+  border-radius: 15px;
+  animation: megaPopIn 0.5s ease-out;
+}
+
+@keyframes megaPopIn {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(-180deg);
+    opacity: 0;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.5) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.mega-combo-text.fade-out {
+  animation: megaFadeOut 1s ease-out forwards;
+}
+
+@keyframes megaFadeOut {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+.mega-combo-particle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  top: 50%;
+  left: 50%;
+  background: linear-gradient(90deg, #ff0000, #ff8800);
+  border-radius: 50%;
+  animation: particleExplode 1.5s ease-out forwards;
+}
+
+@keyframes particleExplode {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: 
+      translate(
+        calc(-50% + cos(var(--angle)) * var(--distance)),
+        calc(-50% + sin(var(--angle)) * var(--distance))
+      )
+      scale(1)
+      rotate(360deg);
+    opacity: 0;
+  }
+}
+
+.mega-combo-break-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 3rem;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 
+    0 0 10px rgba(255, 0, 0, 0.7),
+    0 0 20px rgba(255, 0, 0, 0.5),
+    0 0 30px rgba(255, 0, 0, 0.3);
+  z-index: 1000;
+  background: linear-gradient(90deg, #ff0000, #880000);
+  -webkit-background-clip: text;
+  background-clip: text;
+  padding: 20px 40px;
+  border-radius: 15px;
+  animation: breakPopIn 0.5s ease-out;
+}
+
+@keyframes breakPopIn {
+  0% {
+    transform: translate(-50%, -50%) scale(2) rotate(10deg);
+    opacity: 0;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(0.8) rotate(-5deg);
+  }
+  75% {
+    transform: translate(-50%, -50%) scale(1.2) rotate(3deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.mega-combo-break-text.fade-out {
+  animation: breakFadeOut 1s ease-out forwards;
+}
+
+@keyframes breakFadeOut {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.no-convergence-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(255, 0, 0, 0.8);
+  color: white;
+  padding: 15px 30px;
+  border-radius: 10px;
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: popIn 0.3s ease-out;
+}
+
+.no-convergence-message.fade-out {
+  animation: fadeOut 0.5s ease-in forwards;
+}
+
+@keyframes popIn {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Специальные стили для контейнера с вертикальным блоком */
+.upcoming-block:has(.vertical-1x3) {
+  width: 60px;
+  padding: 10px;
+}
+
+/* Стили для горизонтального блока 1x3 */
+.upcoming-block-grid.horizontal-1x3 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 1fr;
+  width: 120px;
+  height: 40px;
+}
+
+/* Специальные стили для контейнера с горизонтальным блоком */
+.upcoming-block:has(.horizontal-1x3) {
+  height: 60px;
+  padding: 10px;
+}
+
+
+
