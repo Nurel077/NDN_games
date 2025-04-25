@@ -117,13 +117,13 @@ body {
 }
 
 .grid-cell {
+  position: relative;
   width: 50px;
   height: 50px;
-  background-color: rgba(51, 65, 85, 0.5);
-  border-radius: 6px;
-  position: relative;
-  overflow: hidden;
-  transition: background-color 0.2s;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  margin: 2px;
+  transition: background-color 0.3s;
 }
 
 .upcoming-blocks-container {
@@ -205,11 +205,32 @@ body {
 }
 
 .grid-cell.valid-drop {
-  background-color: rgba(34, 197, 94, 0.2);
+  background-color: rgba(34, 197, 94, 0.3);
+  box-shadow: inset 0 0 0 2px rgba(34, 197, 94, 0.8);
+  transition: all 0.2s ease;
+}
+
+.grid-cell.valid-drop:hover {
+  background-color: rgba(34, 197, 94, 0.4);
+  box-shadow: inset 0 0 0 3px rgba(34, 197, 94, 0.9);
 }
 
 .grid-cell.invalid-drop {
-  background-color: rgba(239, 68, 68, 0.2);
+  background-color: rgba(239, 68, 68, 0.3);
+  box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.8);
+  animation: invalidPulse 0.6s ease infinite;
+}
+
+@keyframes invalidPulse {
+  0% {
+    background-color: rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    background-color: rgba(239, 68, 68, 0.4);
+  }
+  100% {
+    background-color: rgba(239, 68, 68, 0.3);
+  }
 }
 
 .filled-cell.falling {
@@ -258,20 +279,56 @@ h1 {
 
 .particle {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  animation: particle-animation 0.5s ease-out forwards;
+  pointer-events: none;
+  transform-origin: center;
+  z-index: 1000;
+  animation: 
+    particle-explosion 0.6s ease-out forwards,
+    particle-rotation 0.6s linear forwards;
 }
 
-@keyframes particle-animation {
+@keyframes particle-explosion {
   0% {
-    transform: scale(0) translate(0, 0);
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  50% {
     opacity: 1;
   }
   100% {
-    transform: scale(1) translate(var(--x, 30px), var(--y, 30px));
+    transform: translate(var(--x), var(--y)) scale(0);
     opacity: 0;
+  }
+}
+
+@keyframes particle-rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(var(--rotation));
+  }
+}
+
+.grid-cell.exploding {
+  animation: cell-explosion 0.3s ease-out;
+}
+
+@keyframes cell-explosion {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.2);
+    filter: brightness(1.5);
+  }
+  100% {
+    transform: scale(0);
+    filter: brightness(0);
   }
 }
 
@@ -726,6 +783,71 @@ h1 {
 .upcoming-block:has(.horizontal-1x3) {
   height: 60px;
   padding: 10px;
+}
+
+.upcoming-block-grid.l-shaped {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  width: 80px;
+  height: 80px;
+  gap: 4px;
+}
+
+/* L-образный блок (┗) - поворот 0° */
+.upcoming-block-grid.l-shaped[data-rotation="0"] .upcoming-block-cell:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+.upcoming-block-grid.l-shaped[data-rotation="0"] .upcoming-block-cell:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+.upcoming-block-grid.l-shaped[data-rotation="0"] .upcoming-block-cell:nth-child(3) {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+/* L-образный блок (┏) - поворот 90° */
+.upcoming-block-grid.l-shaped[data-rotation="1"] .upcoming-block-cell:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+.upcoming-block-grid.l-shaped[data-rotation="1"] .upcoming-block-cell:nth-child(2) {
+  grid-column: 1;
+  grid-row: 2;
+}
+.upcoming-block-grid.l-shaped[data-rotation="1"] .upcoming-block-cell:nth-child(3) {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* L-образный блок (┓) - поворот 180° */
+.upcoming-block-grid.l-shaped[data-rotation="2"] .upcoming-block-cell:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+.upcoming-block-grid.l-shaped[data-rotation="2"] .upcoming-block-cell:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+.upcoming-block-grid.l-shaped[data-rotation="2"] .upcoming-block-cell:nth-child(3) {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* L-образный блок (┛) - поворот 270° */
+.upcoming-block-grid.l-shaped[data-rotation="3"] .upcoming-block-cell:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+.upcoming-block-grid.l-shaped[data-rotation="3"] .upcoming-block-cell:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+.upcoming-block-grid.l-shaped[data-rotation="3"] .upcoming-block-cell:nth-child(3) {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 

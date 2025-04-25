@@ -1,19 +1,27 @@
-const rainbowColors = [
-  "#f87171", // red
-  "#fb923c", // orange
-  "#facc15", // yellow
-  "#4ade80", // green
-  "#60a5fa", // blue
-  "#c084fc"  // purple
+// Константы игры
+const GRID_SIZE = 8;
+const MIN_MATCH = 3;
+const COMBO_TIMEOUT = 1000;
+const GRAVITY_DELAY = 300;
+
+// Цвета для блоков
+const COLORS = [
+  { color: '#FF4500', weight: 25 }, // Оранжевый
+  { color: '#32CD32', weight: 25 }, // Зеленый
+  { color: '#9370DB', weight: 25 }, // Фиолетовый
+  { color: '#FFD700', weight: 25 }, // Желтый
+  { color: '#FF69B4', weight: 25 }  // Розовый
 ];
 
+// Состояние игры
 let draggedBlock = null;
 let draggedBlockColors = [];
 let highlightedCells = [];
 let score = 0;
 let gameOver = false;
 let currentCombo = 0;
-let isComboActive = false;
+let comboTimeout = null;
+let isGravityActive = false;
 let placedBlocksCount = 0;
 let hasExplosionInRound = false;
 let megaComboActive = false;
@@ -27,41 +35,21 @@ let lastComboTime = 0;
  * Создает игровое поле и начальные блоки
  */
 function initializeGame() {
+  // Сброс состояния
+  score = 0;
+  gameOver = false;
+  currentCombo = 0;
+  if (comboTimeout) clearTimeout(comboTimeout);
+  
+  // Очистка и создание сетки
   const grid = document.querySelector('.game-grid');
   if (!grid) return;
-
-  // Очищаем сетку
-  grid.innerHTML = '';
-
-  // Создаем ячейки сетки
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const cell = document.createElement('div');
-      cell.className = 'grid-cell';
-      cell.dataset.row = row;
-      cell.dataset.col = col;
-      grid.appendChild(cell);
-    }
-  }
-
-  // Добавляем обработчики событий для drag and drop
-  grid.addEventListener('dragover', handleDragOver);
-  grid.addEventListener('drop', handleDrop);
-
-  // Генерируем начальные блоки
-  generateUpcomingBlocks();
-}
-
-/**
- * Создание игровой сетки 8x8
- * Очищает предыдущее состояние и создает новую сетку
- */
-function initializeGrid() {
-  const grid = document.querySelector('.game-grid');
+  
   grid.innerHTML = '';
   
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
+  // Создание ячеек
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
       const cell = document.createElement('div');
       cell.className = 'grid-cell';
       cell.dataset.row = row;
@@ -75,11 +63,13 @@ function initializeGrid() {
     }
   }
   
-  score = 0;
-  updateScore();
-  gameOver = false;
-  placedBlocksCount = 0;
+  // Генерация начальных блоков
+  generateUpcomingBlocks();
   
+  // Обновление отображения
+  updateScore();
+  
+  // Удаление старого сообщения об окончании игры
   const gameOverMessage = document.querySelector('.game-over-message');
   if (gameOverMessage) {
     gameOverMessage.remove();
@@ -87,48 +77,162 @@ function initializeGrid() {
 }
 
 /**
- * Получение случайного цвета с учетом уже использованных цветов
- * @param {Array} usedColors - массив уже использованных цветов в текущем блоке
- * @returns {string} - цвет в формате HEX
+ * Получение случайного цвета
  */
 function getRandomColor(usedColors = []) {
-  const colorProbabilities = [
-    { color: '#FF69B4', weight: 25 }, // Розовый - обычный
-    { color: '#FF4500', weight: 25 }, // Оранжевый - обычный
-    { color: '#9370DB', weight: 20 }, // Фиолетовый - редкий
-    { color: '#32CD32', weight: 20 }, // Зеленый - редкий
-    { color: '#FFD700', weight: 10 }  // Золотой - очень редкий
-  ];
-
-  // Подсчитываем количество каждого цвета в текущем блоке
+  // Фильтруем цвета, которые уже использованы 2 раза
   const colorCounts = {};
   usedColors.forEach(color => {
     colorCounts[color] = (colorCounts[color] || 0) + 1;
   });
-
-  // Фильтруем цвета, которые уже использованы 2 раза
-  const availableColors = colorProbabilities.filter(item => 
+  
+  const availableColors = COLORS.filter(item => 
     !colorCounts[item.color] || colorCounts[item.color] < 2
   );
-
-  // Если все цвета использованы по 2 раза (что не должно случиться),
-  // возвращаем случайный цвет из всех возможных
+  
   if (availableColors.length === 0) {
-    return colorProbabilities[Math.floor(Math.random() * colorProbabilities.length)].color;
+    return COLORS[Math.floor(Math.random() * COLORS.length)].color;
   }
-
-  // Считаем общий вес доступных цветов
+  
   const totalWeight = availableColors.reduce((sum, item) => sum + item.weight, 0);
   let random = Math.random() * totalWeight;
   
-  // Выбираем цвет с учетом весов
   for (const item of availableColors) {
-    if (random < item.weight) {
-      return item.color;
-    }
+    if (random < item.weight) return item.color;
     random -= item.weight;
   }
+  
   return availableColors[0].color;
+}
+
+/**
+ * Генерация L-образного блока (с случайным поворотом)
+ */
+function generateLShapedBlock(blockColors) {
+    const block = document.createElement('div');
+    block.className = 'upcoming-block';
+    block.draggable = true;
+    
+    const blockGrid = document.createElement('div');
+    blockGrid.className = 'upcoming-block-grid l-shaped';
+    
+    // Случайно выбираем поворот (0, 90, 180, 270 градусов)
+    const rotation = Math.floor(Math.random() * 4);
+    blockGrid.dataset.rotation = rotation.toString();
+    
+    // Создаем 3 ячейки для L-образного блока
+    for (let i = 0; i < 3; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'upcoming-block-cell';
+        const color = getRandomColor(blockColors);
+        cell.style.backgroundColor = color;
+        blockColors.push(color);
+        blockGrid.appendChild(cell);
+    }
+    
+    block.appendChild(blockGrid);
+    
+    // Добавляем обработчики событий
+    block.addEventListener('dragstart', handleDragStart);
+    block.addEventListener('dragend', handleDragEnd);
+    
+    return block;
+}
+
+/**
+ * Генерация горизонтального блока 1x3
+ * @param {Array} blockColors - массив для отслеживания использованных цветов
+ * @returns {HTMLElement} - сгенерированный блок
+ */
+function generateHorizontalBlock(blockColors) {
+  const block = document.createElement('div');
+  block.className = 'upcoming-block';
+  block.draggable = true;
+  
+  const blockGrid = document.createElement('div');
+  blockGrid.className = 'upcoming-block-grid horizontal-1x3';
+  
+  // Создаем 3 ячейки для горизонтального блока
+  for (let i = 0; i < 3; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'upcoming-block-cell';
+    const color = getRandomColor(blockColors);
+    cell.style.backgroundColor = color;
+    blockColors.push(color);
+    blockGrid.appendChild(cell);
+  }
+  
+  block.appendChild(blockGrid);
+  
+  // Добавляем обработчики событий
+  block.addEventListener('dragstart', handleDragStart);
+  block.addEventListener('dragend', handleDragEnd);
+  
+  return block;
+}
+
+/**
+ * Генерация вертикального блока 1x3
+ * @param {Array} blockColors - массив для отслеживания использованных цветов
+ * @returns {HTMLElement} - сгенерированный блок
+ */
+function generateVerticalBlock(blockColors) {
+  const block = document.createElement('div');
+  block.className = 'upcoming-block';
+  block.draggable = true;
+  
+  const blockGrid = document.createElement('div');
+  blockGrid.className = 'upcoming-block-grid vertical-1x3';
+  
+  // Создаем 3 ячейки для вертикального блока
+  for (let i = 0; i < 3; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'upcoming-block-cell';
+    const color = getRandomColor(blockColors);
+    cell.style.backgroundColor = color;
+    blockColors.push(color);
+    blockGrid.appendChild(cell);
+  }
+  
+  block.appendChild(blockGrid);
+  
+  // Добавляем обработчики событий
+  block.addEventListener('dragstart', handleDragStart);
+  block.addEventListener('dragend', handleDragEnd);
+  
+  return block;
+}
+
+/**
+ * Генерация блока 2x2
+ * @param {Array} blockColors - массив для отслеживания использованных цветов
+ * @returns {HTMLElement} - сгенерированный блок
+ */
+function generate2x2Block(blockColors) {
+  const block = document.createElement('div');
+  block.className = 'upcoming-block';
+  block.draggable = true;
+  
+  const blockGrid = document.createElement('div');
+  blockGrid.className = 'upcoming-block-grid 2x2';
+  
+  // Создаем 4 ячейки для блока 2x2
+  for (let i = 0; i < 4; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'upcoming-block-cell';
+    const color = getRandomColor(blockColors);
+    cell.style.backgroundColor = color;
+    blockColors.push(color);
+    blockGrid.appendChild(cell);
+  }
+  
+  block.appendChild(blockGrid);
+  
+  // Добавляем обработчики событий
+  block.addEventListener('dragstart', handleDragStart);
+  block.addEventListener('dragend', handleDragEnd);
+  
+  return block;
 }
 
 /**
@@ -138,143 +242,170 @@ function getRandomColor(usedColors = []) {
 function generateUpcomingBlocks() {
   const container = document.querySelector('.upcoming-blocks-container');
   if (!container) return;
-
+  
   container.innerHTML = '';
   
+  // Генерируем 3 новых блока
   for (let i = 0; i < 3; i++) {
-    const block = document.createElement('div');
-    block.className = 'upcoming-block';
-    block.draggable = true;
-    
-    const blockGrid = document.createElement('div');
-    blockGrid.className = 'upcoming-block-grid';
-    
-    // Вероятности для разных типов блоков
-    const blockTypeRandom = Math.random() * 100;
-    let blockType;
-    
-    if (blockTypeRandom < 40) { // 40% шанс для 2x2
-      blockType = 0;
-    } else if (blockTypeRandom < 70) { // 30% шанс для горизонтального 1x3
-      blockType = 1;
-    } else { // 30% шанс для вертикального 1x3
-      blockType = 2;
-    }
-    
-    // Массив для отслеживания использованных цветов в текущем блоке
     const blockColors = [];
+    const blockType = Math.random();
+    let block;
     
-    if (blockType === 0) {
-      // Блок 2x2
-    for (let j = 0; j < 4; j++) {
-        const cell = document.createElement('div');
-        cell.className = 'upcoming-block-cell';
-        const color = getRandomColor(blockColors);
-        cell.style.backgroundColor = color;
-        blockColors.push(color);
-        blockGrid.appendChild(cell);
-      }
-    } else if (blockType === 1) {
-      // Горизонтальный блок 1x3
-      blockGrid.classList.add('horizontal-1x3');
-      for (let j = 0; j < 3; j++) {
-        const cell = document.createElement('div');
-        cell.className = 'upcoming-block-cell';
-        const color = getRandomColor(blockColors);
-        cell.style.backgroundColor = color;
-        blockColors.push(color);
-        blockGrid.appendChild(cell);
-      }
+    if (blockType < 0.25) {
+      block = generateLShapedBlock(blockColors);
+    } else if (blockType < 0.5) {
+      block = generateHorizontalBlock(blockColors);
+    } else if (blockType < 0.75) {
+      block = generateVerticalBlock(blockColors);
     } else {
-      // Вертикальный блок 1x3
-      blockGrid.classList.add('vertical-1x3');
-      for (let j = 0; j < 3; j++) {
-        const cell = document.createElement('div');
-        cell.className = 'upcoming-block-cell';
-        const color = getRandomColor(blockColors);
-        cell.style.backgroundColor = color;
-        blockColors.push(color);
-        blockGrid.appendChild(cell);
-      }
+      block = generate2x2Block(blockColors);
     }
     
-    block.appendChild(blockGrid);
     container.appendChild(block);
-    
-    block.addEventListener('dragstart', handleDragStart);
-    block.addEventListener('dragend', handleDragEnd);
   }
 }
 
 /**
- * Обработчик начала перетаскивания блока
- * Сохраняет цвета текущего блока и добавляет класс dragging
+ * Обработка перетаскивания
  */
 function handleDragStart(e) {
+  if (gameOver) return;
+  
   const block = e.target.closest('.upcoming-block');
   if (!block) return;
   
-  draggedBlock = block;
+  const blockGrid = block.querySelector('.upcoming-block-grid');
+  if (!blockGrid) return;
+  
+  const cells = blockGrid.querySelectorAll('.upcoming-block-cell');
+  const colors = Array.from(cells).map(cell => cell.style.backgroundColor);
+  
+  let blockType = '2x2';
+  if (blockGrid.classList.contains('horizontal-1x3')) blockType = 'horizontal';
+  else if (blockGrid.classList.contains('vertical-1x3')) blockType = 'vertical';
+  else if (blockGrid.classList.contains('l-shaped')) blockType = 'l-shaped';
+  
+  const blockData = { type: blockType, colors: colors };
+  e.dataTransfer.setData('text/plain', JSON.stringify(blockData));
+  
   block.classList.add('dragging');
+  draggedBlock = block;
+  draggedBlockColors = colors;
+}
+
+/**
+ * Подсветка области для размещения блока
+ * Показывает силуэт блока в зависимости от его типа и поворота
+ */
+function highlightPlacementArea(row, col, isValid) {
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
   
-  // Сохраняем цвета текущего блока
-  const cells = block.querySelectorAll('.upcoming-block-cell');
-  currentDraggedColors = Array.from(cells).map(cell => cell.style.backgroundColor);
+  // Очищаем предыдущие подсветки
+  clearHighlights();
   
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', '');
+  // Получаем тип блока и поворот из перетаскиваемого блока
+  const blockGrid = draggedBlock.querySelector('.upcoming-block-grid');
+  let blockType;
+  let rotation = 0;
+  
+  if (blockGrid.classList.contains('l-shaped')) {
+    blockType = 'l-shaped';
+    rotation = parseInt(blockGrid.dataset.rotation || '0');
+  }
+  else if (blockGrid.classList.contains('horizontal-1x3')) blockType = 'horizontal';
+  else if (blockGrid.classList.contains('vertical-1x3')) blockType = 'vertical';
+  else blockType = '2x2';
+  
+  const highlightClass = isValid ? 'valid-drop' : 'invalid-drop';
+  
+  // Подсвечиваем ячейки в зависимости от типа блока и поворота
+  switch (blockType) {
+    case 'l-shaped':
+      switch (rotation) {
+        case 0: // ┗
+          if (row < GRID_SIZE - 1 && col < GRID_SIZE - 1) {
+            cells[row * GRID_SIZE + col].classList.add(highlightClass);
+            cells[row * GRID_SIZE + (col + 1)].classList.add(highlightClass);
+            cells[(row + 1) * GRID_SIZE + col].classList.add(highlightClass);
+          }
+          break;
+        case 1: // ┏
+          if (row < GRID_SIZE - 1 && col < GRID_SIZE - 1) {
+            cells[row * GRID_SIZE + col].classList.add(highlightClass);
+            cells[(row + 1) * GRID_SIZE + col].classList.add(highlightClass);
+            cells[(row + 1) * GRID_SIZE + (col + 1)].classList.add(highlightClass);
+          }
+          break;
+        case 2: // ┓
+          if (row < GRID_SIZE - 1 && col < GRID_SIZE - 1) {
+            cells[row * GRID_SIZE + col].classList.add(highlightClass);
+            cells[row * GRID_SIZE + (col + 1)].classList.add(highlightClass);
+            cells[(row + 1) * GRID_SIZE + (col + 1)].classList.add(highlightClass);
+          }
+          break;
+        case 3: // ┛
+          if (row < GRID_SIZE - 1 && col < GRID_SIZE - 1) {
+            cells[row * GRID_SIZE + col].classList.add(highlightClass);
+            cells[row * GRID_SIZE + (col + 1)].classList.add(highlightClass);
+            cells[(row + 1) * GRID_SIZE + (col + 1)].classList.add(highlightClass);
+          }
+          break;
+      }
+      break;
+      
+    case 'horizontal':
+      if (col < GRID_SIZE - 2) {
+        for (let i = 0; i < 3; i++) {
+          cells[row * GRID_SIZE + (col + i)].classList.add(highlightClass);
+        }
+      }
+      break;
+      
+    case 'vertical':
+      if (row < GRID_SIZE - 2) {
+        for (let i = 0; i < 3; i++) {
+          cells[(row + i) * GRID_SIZE + col].classList.add(highlightClass);
+        }
+      }
+      break;
+      
+    case '2x2':
+      if (row < GRID_SIZE - 1 && col < GRID_SIZE - 1) {
+        for (let i = 0; i < 2; i++) {
+          for (let j = 0; j < 2; j++) {
+            cells[(row + i) * GRID_SIZE + (col + j)].classList.add(highlightClass);
+          }
+        }
+      }
+      break;
+  }
 }
 
 /**
  * Обработчик перетаскивания над ячейкой
- * Показывает область размещения блока 2x2
  */
 function handleDragOver(e) {
   e.preventDefault();
   const cell = e.target.closest('.grid-cell');
   if (!cell || !draggedBlock) return;
   
-  // Очищаем предыдущие подсветки
-  document.querySelectorAll('.grid-cell').forEach(cell => {
-    cell.classList.remove('valid-drop', 'invalid-drop');
-  });
-  
+  // Получаем координаты ячейки
   const row = parseInt(cell.dataset.row);
   const col = parseInt(cell.dataset.col);
   
-  // Определяем тип блока
+  // Получаем тип блока
   const blockGrid = draggedBlock.querySelector('.upcoming-block-grid');
-  const blockType = blockGrid.classList.contains('horizontal-1x3') ? 'horizontal' :
-                   blockGrid.classList.contains('vertical-1x3') ? 'vertical' : '2x2';
+  let blockType;
   
-  // Определяем размеры блока
-  let width, height;
-  switch (blockType) {
-    case '2x2':
-      width = 2; height = 2;
-      break;
-    case 'horizontal':
-      width = 3; height = 1;
-      break;
-    case 'vertical':
-      width = 1; height = 3;
-      break;
-  }
+  if (blockGrid.classList.contains('l-shaped')) blockType = 'l-shaped';
+  else if (blockGrid.classList.contains('horizontal-1x3')) blockType = 'horizontal';
+  else if (blockGrid.classList.contains('vertical-1x3')) blockType = 'vertical';
+  else blockType = '2x2';
   
-  // Проверяем возможность размещения и подсвечиваем ячейки
+  // Проверяем возможность размещения и показываем подсветку
   const canPlace = canPlaceBlockAtPosition(row, col, blockType);
-  if (canPlace) {
-    for (let r = row; r < row + height; r++) {
-      for (let c = col; c < col + width; c++) {
-        const targetCell = document.querySelector(`.grid-cell[data-row="${r}"][data-col="${c}"]`);
-        if (targetCell) {
-          targetCell.classList.add('valid-drop');
-        }
-      }
-    }
-  } else {
-    cell.classList.add('invalid-drop');
-  }
+  highlightPlacementArea(row, col, canPlace);
 }
 
 /**
@@ -289,7 +420,6 @@ function handleDragLeave(e) {
 
 /**
  * Очистка подсветки всех ячеек
- * Убирает классы valid-drop и invalid-drop
  */
 function clearHighlights() {
   document.querySelectorAll('.grid-cell').forEach(cell => {
@@ -298,61 +428,21 @@ function clearHighlights() {
 }
 
 /**
- * Подсветка области 2x2 для размещения блока
- * Показывает зеленым если можно разместить, красным если нельзя
- */
-function highlightPlacementArea(row, col, isValid) {
-  for (let r = row; r < row + 2 && r < 8; r++) {
-    for (let c = col; c < col + 2 && c < 8; c++) {
-      const cell = document.querySelector(`.grid-cell[data-row="${r}"][data-col="${c}"]`);
-      if (cell) {
-        cell.classList.add(isValid ? 'valid-drop' : 'invalid-drop');
-      }
-    }
-  }
-}
-
-/**
- * Проверка наличия свободного места для блока
- * @param {number} row - начальная строка
- * @param {number} col - начальный столбец
- * @param {string} blockType - тип блока ('2x2', 'horizontal', 'vertical')
- * @returns {boolean} - true если блок можно разместить
+ * Проверяет, можно ли разместить блок в указанной позиции
  */
 function canPlaceBlockAtPosition(row, col, blockType) {
-  // Проверяем базовые границы
-  if (row < 0 || col < 0) return false;
-
-  // Определяем размеры и ограничения для каждого типа блока
-  let width, height;
   switch (blockType) {
-    case '2x2':
-      width = 2; height = 2;
-      if (row > 6 || col > 6) return false;
-      break;
+    case 'l-shaped':
+      return canPlaceLShapedBlock(row, col);
     case 'horizontal':
-      width = 3; height = 1;
-      if (row > 7 || col > 5) return false;
-      break;
+      return canPlaceHorizontalBlock(row, col);
     case 'vertical':
-      width = 1; height = 3;
-      if (row > 5 || col > 7) return false;
-      break;
+      return canPlaceVerticalBlock(row, col);
+    case '2x2':
+      return canPlace2x2Block(row, col);
     default:
       return false;
   }
-
-  // Проверяем каждую ячейку в области блока
-  for (let r = row; r < row + height; r++) {
-    for (let c = col; c < col + width; c++) {
-      const cell = document.querySelector(`.grid-cell[data-row="${r}"][data-col="${c}"]`);
-      if (!cell || cell.querySelector('.filled-cell')) {
-        return false;
-      }
-    }
-  }
-
-  return true;
 }
 
 /**
@@ -436,35 +526,113 @@ function showNoConvergenceMessage() {
   }, 1500);
 }
 
-function placeBlockInGrid(row, col, colors) {
-  let colorIndex = 0;
-  for (let i = 0; i < 2; i++) {
-    for (let j = 0; j < 2; j++) {
-      const cell = document.querySelector(`.grid-cell[data-row="${row + i}"][data-col="${col + j}"]`);
-      if (cell) {
-        const filledCell = document.createElement('div');
-        filledCell.className = 'filled-cell';
-        filledCell.style.backgroundColor = colors[colorIndex];
-        
-        // Remove any existing filled cell
-        const existingFilledCell = cell.querySelector('.filled-cell');
-        if (existingFilledCell) {
-          existingFilledCell.remove();
-        }
-        
-        // Add animation class
-        filledCell.style.transform = 'scale(0)';
-        cell.appendChild(filledCell);
-        
-        // Trigger animation
-    setTimeout(() => {
-          filledCell.style.transform = 'scale(1)';
-        }, 50 * colorIndex);
-        
-        colorIndex++;
+/**
+ * Размещает блок на игровом поле
+ * @param {number} row - начальная строка
+ * @param {number} col - начальный столбец
+ * @param {Object} blockData - данные блока (тип и цвета)
+ * @returns {Array} - массив размещенных ячеек
+ */
+function placeBlock(row, col, blockData) {
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
+  const placedCells = [];
+  
+  switch (blockData.type) {
+    case 'l-shaped':
+      const draggedBlock = document.querySelector('.upcoming-block.dragging');
+      const blockGrid = draggedBlock?.querySelector('.upcoming-block-grid');
+      const rotation = parseInt(blockGrid?.dataset.rotation || '0');
+      
+      let positions;
+      switch (rotation) {
+        case 0: // ┗
+          positions = [
+            {row: row, col: col},           // Верхняя левая
+            {row: row, col: col + 1},       // Верхняя правая
+            {row: row + 1, col: col}        // Нижняя левая
+          ];
+          break;
+        case 1: // ┏
+          positions = [
+            {row: row, col: col},           // Верхняя левая
+            {row: row + 1, col: col},       // Нижняя левая
+            {row: row + 1, col: col + 1}    // Нижняя правая
+          ];
+          break;
+        case 2: // ┓
+          positions = [
+            {row: row, col: col},           // Верхняя левая
+            {row: row, col: col + 1},       // Верхняя правая
+            {row: row + 1, col: col + 1}    // Нижняя правая
+          ];
+          break;
+        case 3: // ┛
+          positions = [
+            {row: row, col: col},           // Верхняя левая
+            {row: row, col: col + 1},       // Верхняя правая
+            {row: row + 1, col: col + 1}    // Нижняя правая
+          ];
+          break;
+        default:
+          return [];
       }
-    }
+      
+      for (let i = 0; i < positions.length; i++) {
+        const pos = positions[i];
+        const cell = cells[pos.row * GRID_SIZE + pos.col];
+        if (!cell.classList.contains('filled')) {
+          cell.classList.add('filled');
+          cell.style.backgroundColor = blockData.colors[i];
+          placedCells.push(cell);
+        }
+      }
+      break;
+      
+    case 'horizontal':
+      // Размещаем горизонтальный блок 1x3
+      for (let i = 0; i < 3; i++) {
+        const cell = cells[row * GRID_SIZE + (col + i)];
+        if (!cell.classList.contains('filled')) {
+          cell.classList.add('filled');
+          cell.style.backgroundColor = blockData.colors[i];
+          placedCells.push(cell);
+        }
+      }
+      break;
+      
+    case 'vertical':
+      // Размещаем вертикальный блок 1x3
+      for (let i = 0; i < 3; i++) {
+        const cell = cells[(row + i) * GRID_SIZE + col];
+        if (!cell.classList.contains('filled')) {
+          cell.classList.add('filled');
+          cell.style.backgroundColor = blockData.colors[i];
+          placedCells.push(cell);
+        }
+      }
+      break;
+      
+    case '2x2':
+      // Размещаем блок 2x2
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+          const cell = cells[(row + i) * GRID_SIZE + (col + j)];
+          if (!cell.classList.contains('filled')) {
+            cell.classList.add('filled');
+            cell.style.backgroundColor = blockData.colors[i * 2 + j];
+            placedCells.push(cell);
+          }
+        }
+      }
+      break;
+      
+    default:
+      console.error('Неизвестный тип блока:', blockData.type);
+      return [];
   }
+  
+  return placedCells;
 }
 
 function highlightCells(row, col) {
@@ -491,130 +659,168 @@ function clearHighlightedCells() {
 
 /**
  * Поиск совпадающих блоков
- * Ищет группы из 3+ соединенных блоков одного цвета
- * Возвращает массив групп совпадений
  */
 function findMatches() {
-  const matchGroups = [];
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
+  const matches = [];
   const visited = new Set();
-  
-  function getBlockColor(row, col) {
-    const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
-    const filledCell = cell?.querySelector('.filled-cell');
-    return filledCell ? filledCell.style.backgroundColor : null;
+
+  // Функция для проверки соседей
+  function checkNeighbors(row, col, color, group) {
+    const key = `${row},${col}`;
+    if (visited.has(key)) return;
+
+    const cell = cells[row * GRID_SIZE + col];
+    if (!cell || !cell.classList.contains('filled') || cell.style.backgroundColor !== color) return;
+
+    visited.add(key);
+    group.push({row, col, cell});
+
+    // Проверяем всех соседей
+    if (row > 0) checkNeighbors(row - 1, col, color, group); // верх
+    if (row < GRID_SIZE - 1) checkNeighbors(row + 1, col, color, group); // низ
+    if (col > 0) checkNeighbors(row, col - 1, color, group); // лево
+    if (col < GRID_SIZE - 1) checkNeighbors(row, col + 1, color, group); // право
   }
-  
-  // Функция для проверки соединенных блоков
-  function checkConnectedBlocks(startRow, startCol) {
-    const color = getBlockColor(startRow, startCol);
-    if (!color) return [];
-    
-    const connected = [];
-    const queue = [{row: startRow, col: startCol}];
-    const localVisited = new Set();
-    
-    while (queue.length > 0) {
-      const current = queue.shift();
-      const key = `${current.row},${current.col}`;
-      
-      if (localVisited.has(key)) continue;
-      localVisited.add(key);
-      
-      const currentColor = getBlockColor(current.row, current.col);
-      if (currentColor !== color) continue;
-      
-      connected.push(current);
-      
-      // Проверяем соседние ячейки
-      const directions = [
-        {row: -1, col: 0}, // вверх
-        {row: 1, col: 0},  // вниз
-        {row: 0, col: -1}, // влево
-        {row: 0, col: 1}   // вправо
-      ];
-      
-      for (const dir of directions) {
-        const newRow = current.row + dir.row;
-        const newCol = current.col + dir.col;
-        
-        if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-          const newKey = `${newRow},${newCol}`;
-          if (!localVisited.has(newKey) && getBlockColor(newRow, newCol) === color) {
-            queue.push({row: newRow, col: newCol});
-          }
-        }
-      }
-    }
-    
-    // Добавляем все посещенные ячейки в глобальный набор
-    localVisited.forEach(key => visited.add(key));
-    
-    return connected;
-  }
-  
-  // Проверяем все ячейки
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
+
+  // Ищем группы одинаковых блоков
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
       const key = `${row},${col}`;
-      if (!visited.has(key)) {
-        const connected = checkConnectedBlocks(row, col);
-        if (connected.length >= 3) {
-          matchGroups.push({
-            color: getBlockColor(row, col),
-            cells: connected
-          });
-        }
+      if (visited.has(key)) continue;
+
+      const cell = cells[row * GRID_SIZE + col];
+      if (!cell.classList.contains('filled')) continue;
+
+      const color = cell.style.backgroundColor;
+      if (!color) continue;
+
+      const group = [];
+      checkNeighbors(row, col, color, group);
+
+      // Добавляем группу если в ней 3 или более блоков
+      if (group.length >= MIN_MATCH) {
+        matches.push({
+          color: color,
+          cells: group
+        });
       }
     }
   }
-  
-  return matchGroups;
+
+  return matches;
 }
 
 /**
  * Удаление совпавших блоков
- * Создает эффект взрыва и удаляет блоки
  */
 function removeMatches(matches) {
-  matches.forEach(({ row, col }) => {
-    const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
-    const filledCell = cell?.querySelector('.filled-cell');
-      if (filledCell) {
-      filledCell.classList.add('explode');
-    setTimeout(() => {
-        filledCell.remove();
-      }, 300);
+  if (!matches || matches.length === 0) return false;
+  
+  let hasExploded = false;
+  let totalScore = 0;
+  
+  matches.forEach(match => {
+    if (match.cells.length >= MIN_MATCH) {
+      hasExploded = true;
+      
+      // Создаем эффект взрыва для каждой ячейки в группе
+      match.cells.forEach(({cell}) => {
+        createExplosionEffect(cell, match.color);
+        
+        // Удаляем блок
+        cell.classList.add('exploding');
+        setTimeout(() => {
+          cell.classList.remove('filled', 'exploding');
+          cell.style.backgroundColor = '';
+        }, 300);
+      });
+      
+      // Подсчитываем очки
+      const baseScore = match.cells.length * 10;
+      const bonusMultiplier = Math.floor(match.cells.length / 3);
+      totalScore += baseScore * (1 + bonusMultiplier * 0.5);
     }
   });
+  
+  if (hasExploded) {
+    // Применяем множитель комбо
+    if (currentCombo > 1) {
+      totalScore = Math.floor(totalScore * (1 + currentCombo * 0.3));
+    }
+    
+    // Обновляем счет
+    score += Math.floor(totalScore);
+    updateScore();
+    
+    // Обновляем комбо
+    currentCombo++;
+    if (comboTimeout) clearTimeout(comboTimeout);
+    comboTimeout = setTimeout(() => {
+      currentCombo = 0;
+    }, COMBO_TIMEOUT);
+    
+    // Показываем эффект комбо
+    if (matches.length > 1) {
+      const centerMatch = matches[0];
+      showComboEffect(Math.floor(totalScore), findCenterCell(centerMatch.cells), centerMatch.color);
+    } else if (matches[0].cells.length >= 4) {
+      const match = matches[0];
+      showComboEffect(Math.floor(totalScore), findCenterCell(match.cells), match.color);
+    }
+    
+    // Применяем гравитацию после взрыва
+    setTimeout(() => {
+      applyGravity();
+      
+      // Проверяем новые совпадения после падения блоков
+      setTimeout(() => {
+        const newMatches = findMatches();
+        if (newMatches.length > 0) {
+          removeMatches(newMatches);
+        } else {
+          // Проверяем окончание игры после всех взрывов и падений
+          setTimeout(() => {
+            checkForGameOver();
+          }, 100);
+        }
+      }, GRAVITY_DELAY);
+    }, GRAVITY_DELAY);
+  }
+  
+  return hasExploded;
 }
 
 /**
  * Применение гравитации
- * Заставляет блоки падать вниз в пустые ячейки
  */
 function applyGravity() {
   let moved = false;
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
   
-  for (let col = 0; col < 8; col++) {
-    for (let row = 7; row >= 0; row--) {
-      const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
-      if (!cell?.querySelector('.filled-cell')) {
-        for (let r = row - 1; r >= 0; r--) {
-          const upperCell = document.querySelector(`.grid-cell[data-row="${r}"][data-col="${col}"]`);
-          const filledCell = upperCell?.querySelector('.filled-cell');
-          if (filledCell) {
-            const fallDistance = (row - r) * 100;
-            filledCell.style.setProperty('--fall-distance', `${fallDistance}%`);
-            filledCell.classList.add('falling');
-            
-            cell.appendChild(filledCell);
-            moved = true;
-            
-            setTimeout(() => {
-              filledCell.classList.remove('falling');
-            }, 300);
-            break;
-          }
+  // Проходим снизу вверх по каждому столбцу
+  for (let col = 0; col < GRID_SIZE; col++) {
+    let emptyRow = GRID_SIZE - 1;
+    
+    // Ищем пустые ячейки снизу вверх
+    for (let row = GRID_SIZE - 1; row >= 0; row--) {
+      const cell = cells[row * GRID_SIZE + col];
+      
+      if (cell.classList.contains('filled')) {
+        // Если текущая ячейка заполнена и есть куда падать
+        if (row < emptyRow) {
+          // Перемещаем блок вниз
+          const targetCell = cells[emptyRow * GRID_SIZE + col];
+          targetCell.classList.add('filled');
+          targetCell.style.backgroundColor = cell.style.backgroundColor;
+          cell.classList.remove('filled');
+          cell.style.backgroundColor = '';
+          moved = true;
+          emptyRow--;
+        } else {
+          emptyRow = row - 1;
         }
       }
     }
@@ -653,95 +859,135 @@ function moveCell(fromRow, fromCol, toRow, toCol) {
  * Обновленная система подсчета очков
  */
 function checkForMatches() {
-  const matchGroups = findMatches();
+  // Получаем все блоки на поле
+  const blocks = [];
   
-  if (matchGroups.length > 0) {
-    hasExplosionInRound = true;
-    let totalPoints = 0;
-    let maxGroupSize = 0;
-    
-    // Обрабатываем каждую группу как отдельное комбо
-    matchGroups.forEach(group => {
-      if (group.cells.length >= 3) {
-        // Базовые очки теперь зависят от цвета блока
-        let basePoints = 0;
-        switch (group.color) {
-          case '#FFD700': // Золотой
-            basePoints = 200;
-            break;
-          case '#9370DB': // Фиолетовый
-          case '#32CD32': // Зеленый
-            basePoints = 150;
-            break;
-          default:
-            basePoints = 100;
+  // Находим все L-образные блоки
+  for (let row = 0; row < GRID_SIZE - 2; row++) {
+    for (let col = 0; col < GRID_SIZE - 1; col++) {
+      if (canPlaceLShapedBlock(row, col)) {
+        const cells = [
+          document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row + 1}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row + 2}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row + 2}"][data-col="${col + 1}"]`)
+        ];
+        
+        // Проверяем, что все ячейки заполнены
+        if (cells.every(cell => cell && cell.classList.contains('filled'))) {
+          blocks.push({ type: 'l-shaped', cells });
         }
-        
-        // Базовые очки за группу
-        let groupPoints = group.cells.length * basePoints;
-        
-        // Бонус за большие группы (уменьшен)
-        if (group.cells.length > 3) {
-          groupPoints *= (1 + (group.cells.length - 3) * 0.3); // +30% за каждый дополнительный блок
-        }
-        
-        // Множитель комбо (уменьшен)
-        groupPoints *= (1 + currentCombo * 0.2); // +20% за каждое комбо
-        
-        // Штраф за слишком частые комбо
-        if (Date.now() - lastComboTime < 2000) { // Если прошло менее 2 секунд
-          groupPoints *= 0.8; // Уменьшаем очки на 20%
-        }
-        
-        totalPoints += Math.round(groupPoints);
-        maxGroupSize = Math.max(maxGroupSize, group.cells.length);
-        
-        // Показываем эффект комбо для этой группы
-        const centerCell = findCenterCell(group.cells);
-        showComboEffect(Math.round(groupPoints), centerCell, group.color);
-        
-        // Создаем эффект взрыва для каждой ячейки в группе
-        group.cells.forEach(({row, col}) => {
-          const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
-          const filledCell = cell?.querySelector('.filled-cell');
-          
-          if (filledCell) {
-            createExplosionEffect(cell, filledCell.style.backgroundColor);
-            filledCell.classList.add('explode');
-            setTimeout(() => {
-              if (filledCell.parentNode) {
-                filledCell.remove();
-              }
-            }, 300);
-          }
-        });
       }
-    });
+    }
+  }
+  
+  // Находим все горизонтальные блоки
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE - 2; col++) {
+      if (canPlaceHorizontalBlock(row, col)) {
+        const cells = [
+          document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row}"][data-col="${col + 1}"]`),
+          document.querySelector(`.cell[data-row="${row}"][data-col="${col + 2}"]`)
+        ];
+        
+        // Проверяем, что все ячейки заполнены
+        if (cells.every(cell => cell && cell.classList.contains('filled'))) {
+          blocks.push({ type: 'horizontal', cells });
+        }
+      }
+    }
+  }
+  
+  // Находим все вертикальные блоки
+  for (let row = 0; row < GRID_SIZE - 2; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      if (canPlaceVerticalBlock(row, col)) {
+        const cells = [
+          document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row + 1}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row + 2}"][data-col="${col}"]`)
+        ];
+        
+        // Проверяем, что все ячейки заполнены
+        if (cells.every(cell => cell && cell.classList.contains('filled'))) {
+          blocks.push({ type: 'vertical', cells });
+        }
+      }
+    }
+  }
+  
+  // Находим все блоки 2x2
+  for (let row = 0; row < GRID_SIZE - 1; row++) {
+    for (let col = 0; col < GRID_SIZE - 1; col++) {
+      if (canPlace2x2Block(row, col)) {
+        const cells = [
+          document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row}"][data-col="${col + 1}"]`),
+          document.querySelector(`.cell[data-row="${row + 1}"][data-col="${col}"]`),
+          document.querySelector(`.cell[data-row="${row + 1}"][data-col="${col + 1}"]`)
+        ];
+        
+        // Проверяем, что все ячейки заполнены
+        if (cells.every(cell => cell && cell.classList.contains('filled'))) {
+          blocks.push({ type: '2x2', cells });
+        }
+      }
+    }
+  }
+  
+  // Проверяем каждый блок на возможность взрыва
+  let exploded = false;
+  for (const block of blocks) {
+    let canExplode = false;
+    let points = 0;
     
-    // Добавляем очки к общему счету
-    score += totalPoints;
-    updateScore();
-    
-    // Показываем мега-комбо эффект только при действительно впечатляющих комбинациях
-    if (matchGroups.length >= 3 || maxGroupSize >= 6) {
-      showMegaComboEffect(totalPoints);
+    switch (block.type) {
+      case 'l-shaped':
+        canExplode = canExplodeLShapedBlock(block.cells);
+        if (canExplode) {
+          points = explodeLShapedBlock(block.cells);
+          exploded = true;
+        }
+        break;
+      case 'horizontal':
+        canExplode = canExplodeHorizontalBlock(block.cells);
+        if (canExplode) {
+          points = explodeHorizontalBlock(block.cells);
+          exploded = true;
+        }
+        break;
+      case 'vertical':
+        canExplode = canExplodeVerticalBlock(block.cells);
+        if (canExplode) {
+          points = explodeVerticalBlock(block.cells);
+          exploded = true;
+        }
+        break;
+      case '2x2':
+        canExplode = canExplode2x2Block(block.cells);
+        if (canExplode) {
+          points = explode2x2Block(block.cells);
+          exploded = true;
+        }
+        break;
     }
     
-    // Применяем гравитацию после всех взрывов
+    // Обновляем счет, если блок взорвался
+    if (canExplode) {
+      score += points;
+      updateScore();
+    }
+  }
+  
+  // Если хотя бы один блок взорвался, применяем гравитацию
+  if (exploded) {
     setTimeout(() => {
       const moved = applyGravity();
       if (moved) {
         setTimeout(checkForMatches, 300);
-      } else {
-        setTimeout(() => {
-          currentCombo = 0;
-        }, 500);
       }
     }, 300);
-  } else {
-    setTimeout(() => {
-      currentCombo = 0;
-    }, 500);
   }
 }
 
@@ -772,36 +1018,71 @@ function findCenterCell(cells) {
  * Генерирует частицы цвета взорвавшегося блока
  */
 function createExplosionEffect(cell, color) {
-  for (let i = 0; i < 12; i++) {
+  // Создаем больше частиц для более эффектного взрыва
+  const particleCount = 16;
+  const centerX = cell.offsetWidth / 2;
+  const centerY = cell.offsetHeight / 2;
+
+  for (let i = 0; i < particleCount; i++) {
     const particle = document.createElement("div");
     particle.className = "particle";
     
-    // Случайное направление для частиц
-    const angle = (Math.random() * Math.PI * 2);
-    const distance = 20 + Math.random() * 30;
-    const x = Math.cos(angle) * distance;
-    const y = Math.sin(angle) * distance;
+    // Вычисляем угол для равномерного распределения частиц
+    const angle = (i / particleCount) * Math.PI * 2;
+    const velocity = 8 + Math.random() * 15; // Случайная скорость
     
-    particle.style.backgroundColor = color;
-    particle.style.left = `calc(50% + ${x}px)`;
-    particle.style.top = `calc(50% + ${y}px)`;
+    // Вычисляем конечную позицию частицы
+    const x = Math.cos(angle) * velocity * (Math.random() + 0.5) * 10;
+    const y = Math.sin(angle) * velocity * (Math.random() + 0.5) * 10;
     
-    // Добавляем случайное вращение
+    // Создаем градиент для частицы
+    const particleColor = color;
+    particle.style.background = `radial-gradient(circle at center, ${particleColor}, ${adjustColor(particleColor, -30)})`;
+    
+    // Устанавливаем начальную позицию
+    particle.style.left = `${centerX}px`;
+    particle.style.top = `${centerY}px`;
+    
+    // Устанавливаем параметры анимации
+    particle.style.setProperty('--x', `${x}px`);
+    particle.style.setProperty('--y', `${y}px`);
     particle.style.setProperty('--rotation', `${Math.random() * 360}deg`);
+    
+    // Добавляем тень для объемного эффекта
+    particle.style.boxShadow = `0 0 ${Math.random() * 10 + 5}px ${particleColor}`;
     
     cell.appendChild(particle);
     
-        setTimeout(() => {
+    // Удаляем частицу после завершения анимации
+    setTimeout(() => {
       if (cell.contains(particle)) {
         cell.removeChild(particle);
       }
-    }, 500);
+    }, 600);
   }
 }
 
 /**
+ * Изменяет яркость цвета
+ * @param {string} color - CSS цвет
+ * @param {number} percent - процент изменения (-100 до 100)
+ * @returns {string} - новый цвет
+ */
+function adjustColor(color, percent) {
+  const num = parseInt(color.replace("#", ""), 16),
+    amt = Math.round(2.55 * percent),
+    R = (num >> 16) + amt,
+    G = (num >> 8 & 0x00FF) + amt,
+    B = (num & 0x0000FF) + amt;
+  return "#" + (0x1000000 +
+    (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 +
+    (G < 255 ? (G < 1 ? 0 : G) : 255) * 0x100 +
+    (B < 255 ? (B < 1 ? 0 : B) : 255)
+  ).toString(16).slice(1);
+}
+
+/**
  * Показ эффекта комбо
- * Отображает текст и анимацию для комбо
  */
 function showComboEffect(points, centerCell, color) {
   const gameContainer = document.querySelector(".game-container");
@@ -813,6 +1094,8 @@ function showComboEffect(points, centerCell, color) {
     const multiplier = 1 + currentCombo * 0.3;
     comboText.textContent = `${currentCombo}x COMBO! (${multiplier.toFixed(1)}x)`;
     comboText.dataset.combo = currentCombo.toString();
+  } else if (points >= 50) {
+    comboText.textContent = "GREAT!";
   } else {
     comboText.textContent = "MATCH!";
   }
@@ -832,9 +1115,10 @@ function showComboEffect(points, centerCell, color) {
   wave.style.setProperty("--combo-color", color);
   comboText.appendChild(wave);
   
-  // Добавляем искры для высоких комбо
-  if (currentCombo >= 3) {
-    for (let i = 0; i < currentCombo * 4; i++) {
+  // Добавляем искры для высоких комбо или больших очков
+  if (currentCombo >= 3 || points >= 50) {
+    const sparkCount = currentCombo >= 3 ? currentCombo * 4 : 8;
+    for (let i = 0; i < sparkCount; i++) {
       const spark = document.createElement("div");
       spark.className = "combo-spark";
       const angle = Math.random() * Math.PI * 2;
@@ -859,7 +1143,7 @@ function showComboEffect(points, centerCell, color) {
     pointsText.style.setProperty("--combo-color", color);
     
     // Добавляем эффект свечения для больших очков
-    if (points >= 1000) {
+    if (points >= 100) {
       pointsText.style.textShadow = `0 0 10px ${color}, 0 0 20px ${color}`;
       pointsText.style.fontSize = '2rem';
     }
@@ -914,7 +1198,7 @@ function showMegaComboEffect(points) {
     const distance = 100 + Math.random() * 100;
     particle.style.setProperty("--angle", angle + "rad");
     particle.style.setProperty("--distance", distance + "px");
-    particle.style.backgroundColor = rainbowColors[Math.floor(Math.random() * rainbowColors.length)];
+    particle.style.backgroundColor = COLORS[Math.floor(Math.random() * COLORS.length)].color;
     megaComboText.appendChild(particle);
   }
   
@@ -969,158 +1253,65 @@ function showMegaComboBreakEffect() {
 
 /**
  * Проверка окончания игры
- * @returns {boolean} - true если игра окончена
  */
 function checkForGameOver() {
-  // Сначала проверяем, есть ли возможные совпадения на поле
-  function checkForPossibleMatches() {
-    // Получаем все заполненные ячейки
-    const filledCells = [];
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-        const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
-        const filledCell = cell?.querySelector('.filled-cell');
-        if (filledCell) {
-          filledCells.push({
-            row,
-            col,
-            color: filledCell.style.backgroundColor
-          });
-        }
-      }
-    }
+  if (gameOver) return true;
 
-    // Проверяем каждую ячейку на возможные совпадения
-    for (let i = 0; i < filledCells.length; i++) {
-      const current = filledCells[i];
-      let sameColorCount = 1;
+  const upcomingBlocks = document.querySelectorAll('.upcoming-block');
+  if (!upcomingBlocks.length) return false;
+
+  // Проверяем каждый upcoming блок
+  for (const block of upcomingBlocks) {
+    const blockGrid = block.querySelector('.upcoming-block-grid');
+    if (!blockGrid) continue;
+
+    // Определяем тип блока
+    let blockType;
+    if (blockGrid.classList.contains('l-shaped')) blockType = 'l-shaped';
+    else if (blockGrid.classList.contains('horizontal-1x3')) blockType = 'horizontal';
+    else if (blockGrid.classList.contains('vertical-1x3')) blockType = 'vertical';
+    else blockType = '2x2';
+
+    // Для L-образного блока проверяем все повороты
+    if (blockType === 'l-shaped') {
+      const originalRotation = parseInt(blockGrid.dataset.rotation || '0');
       
-      // Проверяем соседние ячейки того же цвета
-      for (let j = 0; j < filledCells.length; j++) {
-        if (i !== j) {
-          const other = filledCells[j];
-          if (current.color === other.color) {
-            // Проверяем, являются ли ячейки соседними
-            const rowDiff = Math.abs(current.row - other.row);
-            const colDiff = Math.abs(current.col - other.col);
-            if ((rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1)) {
-              sameColorCount++;
-              if (sameColorCount >= 3) {
-                return true; // Найдено возможное совпадение
-              }
+      for (let rotation = 0; rotation < 4; rotation++) {
+        blockGrid.dataset.rotation = rotation.toString();
+        
+        // Проверяем все возможные позиции для текущего поворота
+        for (let row = 0; row < GRID_SIZE; row++) {
+          for (let col = 0; col < GRID_SIZE; col++) {
+            // Временно делаем блок "перетаскиваемым" для проверки
+            block.classList.add('dragging');
+            const canPlace = canPlaceBlockAtPosition(row, col, blockType);
+            block.classList.remove('dragging');
+            
+            if (canPlace) {
+              blockGrid.dataset.rotation = originalRotation.toString();
+              return false; // Нашли возможное размещение
             }
           }
         }
       }
-    }
-    return false;
-  }
-
-  // Проверяем возможность размещения блока 2x2
-  function canPlace2x2() {
-    for (let row = 0; row <= 6; row++) {
-      for (let col = 0; col <= 6; col++) {
-        let canPlace = true;
-        // Проверяем все 4 ячейки блока 2x2
-        for (let r = 0; r < 2; r++) {
-          for (let c = 0; c < 2; c++) {
-            const cell = document.querySelector(`.grid-cell[data-row="${row + r}"][data-col="${col + c}"]`);
-            if (!cell || cell.querySelector('.filled-cell')) {
-              canPlace = false;
-              break;
-            }
-          }
-          if (!canPlace) break;
-        }
-        if (canPlace) return true;
-      }
-    }
-    return false;
-  }
-
-  // Проверяем возможность размещения горизонтального блока 1x3
-  function canPlaceHorizontal() {
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col <= 5; col++) {
-        let canPlace = true;
-        for (let c = 0; c < 3; c++) {
-          const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col + c}"]`);
-          if (!cell || cell.querySelector('.filled-cell')) {
-            canPlace = false;
-            break;
+      
+      blockGrid.dataset.rotation = originalRotation.toString();
+    } else {
+      // Для остальных блоков проверяем все позиции
+      for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+          if (canPlaceBlockAtPosition(row, col, blockType)) {
+            return false; // Нашли возможное размещение
           }
         }
-        if (canPlace) return true;
       }
     }
-    return false;
   }
 
-  // Проверяем возможность размещения вертикального блока 1x3
-  function canPlaceVertical() {
-    for (let row = 0; row <= 5; row++) {
-      for (let col = 0; col < 8; col++) {
-        let canPlace = true;
-        for (let r = 0; r < 3; r++) {
-          const cell = document.querySelector(`.grid-cell[data-row="${row + r}"][data-col="${col}"]`);
-          if (!cell || cell.querySelector('.filled-cell')) {
-            canPlace = false;
-            break;
-          }
-        }
-        if (canPlace) return true;
-      }
-    }
-    return false;
-  }
-
-  const hasPossibleMatches = checkForPossibleMatches();
-  if (hasPossibleMatches) {
-    return false; // Игра продолжается, если есть возможные совпадения
-  }
-
-  // Проверяем возможность размещения каждого типа блока
-  const can2x2 = canPlace2x2();
-  const canHorizontal = canPlaceHorizontal();
-  const canVertical = canPlaceVertical();
-
-  // Проверяем текущий блок
-  const currentBlock = document.querySelector('.upcoming-block');
-  if (currentBlock) {
-    const blockGrid = currentBlock.querySelector('.upcoming-block-grid');
-    const isHorizontal = blockGrid.classList.contains('horizontal-1x3');
-    const isVertical = blockGrid.classList.contains('vertical-1x3');
-    
-    // Если текущий блок 2x2 и нет места для него - игра окончена
-    if (!isHorizontal && !isVertical && !can2x2) {
-      gameOver = true;
-      showGameOver("Game Over! No space for current block!");
-      return true;
-    }
-    
-    // Если текущий блок горизонтальный 1x3 и нет места для него
-    if (isHorizontal && !canHorizontal) {
-      gameOver = true;
-      showGameOver("Game Over! No space for current block!");
-      return true;
-    }
-    
-    // Если текущий блок вертикальный 1x3 и нет места для него
-    if (isVertical && !canVertical) {
-      gameOver = true;
-      showGameOver("Game Over! No space for current block!");
-      return true;
-    }
-  }
-
-  // Если нет возможных совпадений и нет места для любых блоков
-  if (!hasPossibleMatches && !can2x2 && !canHorizontal && !canVertical) {
-    gameOver = true;
-    showGameOver("Game Over! No possible matches and no space for new blocks!");
-    return true;
-  }
-
-  return false;
+  // Если дошли до этой точки, значит ни один блок нельзя разместить
+  gameOver = true;
+  showGameOver("Game Over! No valid moves left!");
+  return true;
 }
 
 /**
@@ -1171,34 +1362,12 @@ function showGameOver(reason) {
 }
 
 /**
- * Обновление счета
- * Обновляет отображение счета с анимацией
+ * Обновляет отображение счета на экране
  */
 function updateScore() {
-  const scoreDisplay = document.querySelector('.score-display');
-  if (scoreDisplay) {
-    // Анимируем изменение счета
-    const oldScore = parseInt(scoreDisplay.dataset.score || '0');
-    const scoreDiff = score - oldScore;
-    
-    if (scoreDiff > 0) {
-      // Добавляем эффект увеличения для счета
-      scoreDisplay.style.transform = 'scale(1.2)';
-      scoreDisplay.style.color = '#FFD700'; // Золотой цвет для увеличения счета
-      
-      setTimeout(() => {
-        scoreDisplay.style.transform = 'scale(1)';
-        scoreDisplay.style.color = '#fff';
-      }, 300);
-    }
-    
-    scoreDisplay.dataset.score = score.toString();
-    scoreDisplay.innerHTML = `Score: <span class="score-value">${score}</span>`;
-    
-    // Добавляем класс для высоких счетов
-    if (score >= 10000) {
-      scoreDisplay.classList.add('high-score');
-    }
+  const scoreElement = document.querySelector('.score-display');
+  if (scoreElement) {
+    scoreElement.textContent = `Score: ${score}`;
   }
 }
 
@@ -1221,9 +1390,13 @@ function restartGame() {
 }
 
 function handleDragEnd(e) {
-  if (draggedBlock) {
-    draggedBlock.classList.remove('dragging');
+  const block = e.target.closest('.upcoming-block');
+  if (block) {
+    block.classList.remove('dragging');
   }
+  clearHighlights();
+  draggedBlock = null;
+  draggedBlockColors = [];
 }
 
 // Call addStyles when the game initializes
@@ -1237,76 +1410,211 @@ window.addEventListener('load', () => {
  */
 function handleDrop(e) {
   e.preventDefault();
+  if (gameOver) return;
+  
   const cell = e.target.closest('.grid-cell');
-  if (!cell || !draggedBlock || !currentDraggedColors) return;
+  if (!cell) return;
   
-  // Очищаем подсветку
-  document.querySelectorAll('.grid-cell').forEach(cell => {
-    cell.classList.remove('valid-drop', 'invalid-drop');
-  });
+  try {
+    const blockData = JSON.parse(e.dataTransfer.getData('text/plain'));
+    if (!blockData || !blockData.type || !blockData.colors) return;
   
-  const blockGrid = draggedBlock.querySelector('.upcoming-block-grid');
-  const isHorizontal1x3 = blockGrid.classList.contains('horizontal-1x3');
-  const isVertical1x3 = blockGrid.classList.contains('vertical-1x3');
+    const row = parseInt(cell.dataset.row);
+    const col = parseInt(cell.dataset.col);
   
-  const row = parseInt(cell.dataset.row);
-  const col = parseInt(cell.dataset.col);
-  
-  // Определяем тип блока
-  let blockType = '2x2';
-  if (isHorizontal1x3) blockType = 'horizontal';
-  if (isVertical1x3) blockType = 'vertical';
-  
-  // Проверяем возможность размещения
-  if (!canPlaceBlockAtPosition(row, col, blockType)) return;
-  
-  // Сбрасываем флаг взрывов для нового хода
-  hasExplosionInRound = false;
-  
-  // Собираем целевые ячейки
-  const targetCells = [];
-  if (blockType === '2x2') {
-    for (let i = 0; i < 2; i++) {
-      for (let j = 0; j < 2; j++) {
-        targetCells.push(document.querySelector(`.grid-cell[data-row="${row + i}"][data-col="${col + j}"]`));
+    if (canPlaceBlockAtPosition(row, col, blockData.type)) {
+      const placedCells = placeBlock(row, col, blockData);
+      
+      if (placedCells.length > 0) {
+        // Удаляем размещенный блок
+        const draggedBlock = document.querySelector('.upcoming-block.dragging');
+        if (draggedBlock) draggedBlock.remove();
+        
+        // Проверяем совпадения
+        setTimeout(() => {
+          const matches = findMatches();
+          if (matches.length > 0) {
+            removeMatches(matches);
+          }
+          
+          // Генерируем новые блоки если нужно
+          const upcomingContainer = document.querySelector('.upcoming-blocks-container');
+          if (upcomingContainer && upcomingContainer.children.length === 0) {
+            generateUpcomingBlocks();
+            // Проверяем окончание игры после генерации новых блоков
+            setTimeout(() => {
+              checkForGameOver();
+            }, 100);
+          } else {
+            // Проверяем окончание игры с текущими блоками
+            setTimeout(() => {
+              checkForGameOver();
+            }, 100);
+          }
+        }, 100);
       }
     }
-  } else if (blockType === 'horizontal') {
-    for (let i = 0; i < 3; i++) {
-      targetCells.push(document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col + i}"]`));
+  } catch (error) {
+    console.error('Ошибка при размещении блока:', error);
+  }
+  
+  clearHighlights();
+}
+
+/**
+ * Проверяет, можно ли разместить L-образный блок в указанной позиции
+ */
+function canPlaceLShapedBlock(row, col) {
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
+  
+  // Для проверки во время перетаскивания
+  const draggedBlock = document.querySelector('.upcoming-block.dragging');
+  const blockGrid = draggedBlock ? draggedBlock.querySelector('.upcoming-block-grid') : null;
+  const rotation = blockGrid ? parseInt(blockGrid.dataset.rotation || '0') : 0;
+
+  // Базовая проверка границ
+  if (row < 0 || col < 0) return false;
+
+  // Проверяем занятость ячеек в зависимости от поворота
+  switch (rotation) {
+    case 0: // ┗
+      if (row >= GRID_SIZE - 1 || col >= GRID_SIZE - 1) return false;
+      return (
+        !cells[row * GRID_SIZE + col].classList.contains('filled') &&
+        !cells[row * GRID_SIZE + (col + 1)].classList.contains('filled') &&
+        !cells[(row + 1) * GRID_SIZE + col].classList.contains('filled')
+      );
+    case 1: // ┏
+      if (row >= GRID_SIZE - 1 || col >= GRID_SIZE - 1) return false;
+      return (
+        !cells[row * GRID_SIZE + col].classList.contains('filled') &&
+        !cells[(row + 1) * GRID_SIZE + col].classList.contains('filled') &&
+        !cells[(row + 1) * GRID_SIZE + (col + 1)].classList.contains('filled')
+      );
+    case 2: // ┓
+      if (row >= GRID_SIZE - 1 || col >= GRID_SIZE - 1) return false;
+      return (
+        !cells[row * GRID_SIZE + col].classList.contains('filled') &&
+        !cells[row * GRID_SIZE + (col + 1)].classList.contains('filled') &&
+        !cells[(row + 1) * GRID_SIZE + (col + 1)].classList.contains('filled')
+      );
+    case 3: // ┛
+      if (row >= GRID_SIZE - 1 || col >= GRID_SIZE - 1) return false;
+      return (
+        !cells[row * GRID_SIZE + col].classList.contains('filled') &&
+        !cells[row * GRID_SIZE + (col + 1)].classList.contains('filled') &&
+        !cells[(row + 1) * GRID_SIZE + (col + 1)].classList.contains('filled')
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * Проверяет и удаляет заполненные линии
+ * Обновляет счет после удаления линий
+ */
+function checkLines() {
+  const grid = document.querySelector('.grid');
+  const cells = grid.querySelectorAll('.grid-cell');
+  let linesCleared = 0;
+  
+  // Проверяем горизонтальные линии
+  for (let row = 0; row < GRID_SIZE; row++) {
+    let isLineFull = true;
+    for (let col = 0; col < GRID_SIZE; col++) {
+      const cell = cells[row * GRID_SIZE + col];
+      if (!cell.classList.contains('filled')) {
+        isLineFull = false;
+        break;
+      }
     }
-  } else {
-    for (let i = 0; i < 3; i++) {
-      targetCells.push(document.querySelector(`.grid-cell[data-row="${row + i}"][data-col="${col}"]`));
+    
+    if (isLineFull) {
+      // Удаляем линию
+      for (let col = 0; col < GRID_SIZE; col++) {
+        const cell = cells[row * GRID_SIZE + col];
+        cell.classList.remove('filled');
+        cell.style.backgroundColor = '';
+      }
+      
+      // Сдвигаем все блоки выше вниз
+      for (let r = row; r > 0; r--) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+          const cellAbove = cells[(r - 1) * GRID_SIZE + col];
+          const cell = cells[r * GRID_SIZE + col];
+          
+          if (cellAbove.classList.contains('filled')) {
+            cell.classList.add('filled');
+            cell.style.backgroundColor = cellAbove.style.backgroundColor;
+            cellAbove.classList.remove('filled');
+            cellAbove.style.backgroundColor = '';
+          }
+        }
+      }
+      
+      linesCleared++;
+      row--; // Проверяем ту же строку снова, так как блоки сдвинулись вниз
     }
   }
   
-  // Размещаем блок
-  targetCells.forEach((targetCell, index) => {
-    const filledCell = document.createElement('div');
-    filledCell.className = 'filled-cell';
-    filledCell.style.backgroundColor = currentDraggedColors[index];
-    targetCell.appendChild(filledCell);
-  });
+  // Обновляем счет
+  if (linesCleared > 0) {
+    score += linesCleared * 100;
+    updateScore();
+  }
+}
+
+function canPlaceHorizontalBlock(row, col) {
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
   
-  draggedBlock.remove();
-  draggedBlock = null;
-  currentDraggedColors = null;
+  // Проверяем границы поля для горизонтального блока 1x3
+  if (row < 0 || col < 0 || row >= GRID_SIZE || col >= GRID_SIZE - 2) {
+    return false;
+  }
   
-  // Проверяем совпадения после размещения блока
-  setTimeout(() => {
-    checkForMatches();
-    
-    // Проверяем, нужно ли сгенерировать новые блоки
-    const container = document.querySelector('.upcoming-blocks-container');
-    if (!container || container.children.length === 0) {
-      generateUpcomingBlocks();
-    }
-    
-    // Проверяем возможность продолжения игры после того, как все эффекты завершены
-    setTimeout(() => {
-      checkForGameOver();
-    }, 1000);
-  }, 100);
+  // Проверяем занятость ячеек
+  return (
+    !cells[row * GRID_SIZE + col].classList.contains('filled') &&
+    !cells[row * GRID_SIZE + (col + 1)].classList.contains('filled') &&
+    !cells[row * GRID_SIZE + (col + 2)].classList.contains('filled')
+  );
+}
+
+function canPlaceVerticalBlock(row, col) {
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
+  
+  // Проверяем границы поля для вертикального блока 1x3
+  if (row < 0 || col < 0 || row >= GRID_SIZE - 2 || col >= GRID_SIZE) {
+    return false;
+  }
+  
+  // Проверяем занятость ячеек
+  return (
+    !cells[row * GRID_SIZE + col].classList.contains('filled') &&
+    !cells[(row + 1) * GRID_SIZE + col].classList.contains('filled') &&
+    !cells[(row + 2) * GRID_SIZE + col].classList.contains('filled')
+  );
+}
+
+function canPlace2x2Block(row, col) {
+  const grid = document.querySelector('.game-grid');
+  const cells = grid.querySelectorAll('.grid-cell');
+  
+  // Проверяем границы поля для блока 2x2
+  if (row < 0 || col < 0 || row >= GRID_SIZE - 1 || col >= GRID_SIZE - 1) {
+    return false;
+  }
+  
+  // Проверяем занятость ячеек
+  return (
+    !cells[row * GRID_SIZE + col].classList.contains('filled') &&
+    !cells[row * GRID_SIZE + (col + 1)].classList.contains('filled') &&
+    !cells[(row + 1) * GRID_SIZE + col].classList.contains('filled') &&
+    !cells[(row + 1) * GRID_SIZE + (col + 1)].classList.contains('filled')
+  );
 }
 
