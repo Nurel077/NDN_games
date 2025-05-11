@@ -44,9 +44,9 @@ function initializeGame() {
   // Очистка и создание сетки
   const grid = document.querySelector('.game-grid');
   if (!grid) return;
-  
+
   grid.innerHTML = '';
-  
+
   // Создание ячеек
   for (let row = 0; row < GRID_SIZE; row++) {
     for (let col = 0; col < GRID_SIZE; col++) {
@@ -85,15 +85,15 @@ function getRandomColor(usedColors = []) {
   usedColors.forEach(color => {
     colorCounts[color] = (colorCounts[color] || 0) + 1;
   });
-  
+
   const availableColors = COLORS.filter(item => 
     !colorCounts[item.color] || colorCounts[item.color] < 2
   );
-  
+
   if (availableColors.length === 0) {
     return COLORS[Math.floor(Math.random() * COLORS.length)].color;
   }
-  
+
   const totalWeight = availableColors.reduce((sum, item) => sum + item.weight, 0);
   let random = Math.random() * totalWeight;
   
@@ -154,13 +154,13 @@ function generateHorizontalBlock(blockColors) {
   
   // Создаем 3 ячейки для горизонтального блока
   for (let i = 0; i < 3; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'upcoming-block-cell';
-    const color = getRandomColor(blockColors);
-    cell.style.backgroundColor = color;
-    blockColors.push(color);
-    blockGrid.appendChild(cell);
-  }
+        const cell = document.createElement('div');
+        cell.className = 'upcoming-block-cell';
+        const color = getRandomColor(blockColors);
+        cell.style.backgroundColor = color;
+        blockColors.push(color);
+        blockGrid.appendChild(cell);
+      }
   
   block.appendChild(blockGrid);
   
@@ -186,13 +186,13 @@ function generateVerticalBlock(blockColors) {
   
   // Создаем 3 ячейки для вертикального блока
   for (let i = 0; i < 3; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'upcoming-block-cell';
-    const color = getRandomColor(blockColors);
-    cell.style.backgroundColor = color;
-    blockColors.push(color);
-    blockGrid.appendChild(cell);
-  }
+        const cell = document.createElement('div');
+        cell.className = 'upcoming-block-cell';
+        const color = getRandomColor(blockColors);
+        cell.style.backgroundColor = color;
+        blockColors.push(color);
+        blockGrid.appendChild(cell);
+      }
   
   block.appendChild(blockGrid);
   
@@ -218,19 +218,19 @@ function generate2x2Block(blockColors) {
   
   // Создаем 4 ячейки для блока 2x2
   for (let i = 0; i < 4; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'upcoming-block-cell';
-    const color = getRandomColor(blockColors);
-    cell.style.backgroundColor = color;
-    blockColors.push(color);
-    blockGrid.appendChild(cell);
-  }
-  
-  block.appendChild(blockGrid);
-  
+        const cell = document.createElement('div');
+        cell.className = 'upcoming-block-cell';
+        const color = getRandomColor(blockColors);
+        cell.style.backgroundColor = color;
+        blockColors.push(color);
+        blockGrid.appendChild(cell);
+    }
+    
+    block.appendChild(blockGrid);
+    
   // Добавляем обработчики событий
-  block.addEventListener('dragstart', handleDragStart);
-  block.addEventListener('dragend', handleDragEnd);
+    block.addEventListener('dragstart', handleDragStart);
+    block.addEventListener('dragend', handleDragEnd);
   
   return block;
 }
@@ -329,7 +329,7 @@ function highlightPlacementArea(row, col, isValid) {
             cells[row * GRID_SIZE + (col + 1)].classList.add(highlightClass);
             cells[(row + 1) * GRID_SIZE + col].classList.add(highlightClass);
           }
-          break;
+      break;
         case 1: // ┏
           if (row < GRID_SIZE - 1 && col < GRID_SIZE - 1) {
             cells[row * GRID_SIZE + col].classList.add(highlightClass);
@@ -665,7 +665,7 @@ function findMatches() {
   const cells = grid.querySelectorAll('.grid-cell');
   const matches = [];
   const visited = new Set();
-
+  
   // Функция для проверки соседей
   function checkNeighbors(row, col, color, group) {
     const key = `${row},${col}`;
@@ -731,10 +731,10 @@ function removeMatches(matches) {
         
         // Удаляем блок
         cell.classList.add('exploding');
-        setTimeout(() => {
+    setTimeout(() => {
           cell.classList.remove('filled', 'exploding');
           cell.style.backgroundColor = '';
-        }, 300);
+      }, 300);
       });
       
       // Подсчитываем очки
@@ -976,10 +976,10 @@ function checkForMatches() {
     // Обновляем счет, если блок взорвался
     if (canExplode) {
       score += points;
-      updateScore();
+    updateScore();
     }
-  }
-  
+    }
+    
   // Если хотя бы один блок взорвался, применяем гравитацию
   if (exploded) {
     setTimeout(() => {
@@ -1054,7 +1054,7 @@ function createExplosionEffect(cell, color) {
     cell.appendChild(particle);
     
     // Удаляем частицу после завершения анимации
-    setTimeout(() => {
+        setTimeout(() => {
       if (cell.contains(particle)) {
         cell.removeChild(particle);
       }
@@ -1309,9 +1309,9 @@ function checkForGameOver() {
   }
 
   // Если дошли до этой точки, значит ни один блок нельзя разместить
-  gameOver = true;
+    gameOver = true;
   showGameOver("Game Over! No valid moves left!");
-  return true;
+    return true;
 }
 
 /**
