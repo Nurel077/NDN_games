@@ -8,7 +8,7 @@ const GRAVITY_DELAY = 300;
 const COLORS = [
   { color: '#FF4500', weight: 25 }, // Оранжевый
   { color: '#32CD32', weight: 25 }, // Зеленый
-  { color: '#9370DB', weight: 25 }, // Фиолетовый
+  { color: '#9370DB', weight: 25 }, // Violet
   { color: '#FFD700', weight: 25 }, // Желтый
   { color: '#FF69B4', weight: 25 }  // Розовый
 ];
